@@ -11,19 +11,16 @@ body {
     background-color: #0e1117;
     color: white;
 }
-
 .kpi-card {
     background-color: #1c1f26;
     padding: 15px;
     border-radius: 10px;
     text-align: center;
 }
-
 .kpi-title {
     font-size: 14px;
     color: #aaa;
 }
-
 .kpi-value {
     font-size: 22px;
     font-weight: bold;
@@ -33,15 +30,25 @@ body {
 """, unsafe_allow_html=True)
 
 # -------------------------------
+# 🚀 CACHE LOADING (VERY IMPORTANT)
+# -------------------------------
+@st.cache_data
+def load_file(file):
+    if file.name.endswith(".xlsb"):
+        return pd.read_excel(file, engine="pyxlsb", header=None)
+    else:
+        return pd.read_excel(file, engine="openpyxl", header=None)
+
+# -------------------------------
 # Title
 # -------------------------------
 st.markdown("<h1 style='text-align:center;'>📊 DGR Dashboard</h1><hr>", unsafe_allow_html=True)
 
 # -------------------------------
-# 📁 Upload Multiple Files (FOLDER SIMULATION)
+# 📁 Upload Files
 # -------------------------------
 uploaded_files = st.file_uploader(
-    "📁 Upload DGR Files (Select all files from folder)",
+    "📁 Upload DGR Files",
     type=["xlsx", "xlsb"],
     accept_multiple_files=True
 )
@@ -69,13 +76,13 @@ else:
 # -------------------------------
 if submit:
     file = file_dict[selected_date]
+    df = load_file(file)
 
-    if file.name.endswith(".xlsb"):
-        df = pd.read_excel(file, engine="pyxlsb", header=None)
-    else:
-        df = pd.read_excel(file, engine="openpyxl", header=None)
+    # 🔥 Convert once for faster searching
+    text_df = df.astype(str)
 
     st.session_state["df"] = df
+    st.session_state["text_df"] = text_df
 
 # -------------------------------
 # MAIN LOGIC
@@ -83,23 +90,26 @@ if submit:
 if "df" in st.session_state:
 
     df = st.session_state["df"]
+    text_df = st.session_state["text_df"]
 
-    # Extract Info
-    date_row = df[df.apply(lambda r: r.astype(str).str.contains("Date", case=False).any(), axis=1)]
-    month_row = df[df.apply(lambda r: r.astype(str).str.contains("Month", case=False).any(), axis=1)]
+    # -------------------------------
+    # 📅 Extract Info (FAST SEARCH)
+    # -------------------------------
+    date_idx = text_df[text_df.iloc[:, :].apply(lambda r: r.str.contains("Date", case=False).any(), axis=1)].index
+    month_idx = text_df[text_df.iloc[:, :].apply(lambda r: r.str.contains("Month", case=False).any(), axis=1)].index
 
     st.subheader("📅 Extracted Info")
 
-    if not date_row.empty:
-        raw_date = date_row.iloc[0, 4]
+    if len(date_idx) > 0:
+        raw_date = df.iloc[date_idx[0], 4]
         try:
             real_date = datetime.datetime(1899, 12, 30) + datetime.timedelta(days=float(raw_date))
             st.write("Date:", real_date.strftime("%d-%b-%Y"))
         except:
             st.write("Date:", raw_date)
 
-    if not month_row.empty:
-        st.write("Month:", month_row.iloc[0, 4])
+    if len(month_idx) > 0:
+        st.write("Month:", df.iloc[month_idx[0], 4])
 
     # -------------------------------
     # SECTION SELECT
@@ -119,14 +129,13 @@ if "df" in st.session_state:
         view_type = st.selectbox("Select View", ["Daily", "MTD", "YTD"])
         st.subheader(f"📈 KPI Summary ({view_type})")
 
-        kpi_row = df[df.apply(
-            lambda r: r.astype(str).str.contains("Key Performance Indicators", case=False).any(),
-            axis=1
-        )]
+        kpi_idx = text_df[text_df.apply(
+            lambda r: r.str.contains("Key Performance Indicators", case=False).any(), axis=1
+        )].index
 
-        if not kpi_row.empty:
+        if len(kpi_idx) > 0:
 
-            start = kpi_row.index[0]
+            start = kpi_idx[0]
             header_row = df.iloc[start]
 
             col_index = None
@@ -202,14 +211,13 @@ if "df" in st.session_state:
 
         clean_data = []
 
-        breakdown_row = df[df.apply(
-            lambda r: r.astype(str).str.contains("Breakdown", case=False).any(),
-            axis=1
-        )]
+        breakdown_idx = text_df[text_df.apply(
+            lambda r: r.str.contains("Breakdown", case=False).any(), axis=1
+        )].index
 
-        if not breakdown_row.empty:
+        if len(breakdown_idx) > 0:
 
-            start = breakdown_row.index[0]
+            start = breakdown_idx[0]
             breakdown_table = df.iloc[start+2:start+20]
 
             for _, row in breakdown_table.iterrows():
